@@ -1,6 +1,6 @@
 import Util from './Util';
 import * as commonmark from 'commonmark';
-import {Ast2MarkdownOptions} from './Types';
+import { Ast2MarkdownOptions } from './Types';
 
 enum Escaping {
     LITERAL,
@@ -268,16 +268,6 @@ export default class MarkdownRenderer {
             case 'Document':
                 break;
 
-            case 'BlockQuote':
-                if (entering) {
-                    this.literal("> ");
-                    this.prefix += "> ";
-                } else {
-                    this.prefix = this.prefix.substr(0, this.prefix.length - 2);
-                    this.blankline();
-                }
-                break;
-
             case 'List':
                 if (!entering && node.next && (node.next.type == 'CodeBlock' ||
                     node.next.type == 'List')) {
@@ -315,7 +305,7 @@ export default class MarkdownRenderer {
                 }
                 if (entering) {
                     if (node.parent.listType === 'Bullet') {
-                        this.literal("* ");
+                        this.literal("- ");
                         this.prefix += "  ";
                     } else {
                         this.literal(listMarker);
@@ -326,201 +316,6 @@ export default class MarkdownRenderer {
                 } else {
                     this.truncatePrefix(markerWidth);
                     this.newLine();
-                }
-                break;
-
-            case 'Heading':
-                let useSetTextHeadingUnderline = node.level < 3 && node.firstChild;
-                if (entering) {
-                    if (!useSetTextHeadingUnderline) {
-                        for (let i = node.level; i > 0; i--) {
-                            this.literal("#");
-                        }
-                        this.literal(" ");
-                        this.isNoWrap = true;
-                    }
-                } else {
-                    if (useSetTextHeadingUnderline) {
-                        let headingLine = '---';
-                        if (node.level === 1) {
-                            headingLine = '===';
-                        }
-                        this.newLine();
-                        this.literal(headingLine)
-                    }
-                    this.isNoWrap = false;
-                    this.blankline();
-                }
-                break;
-
-            case 'CodeBlock':
-                this.blankline();
-                let info = node.info || '';
-                let codeLiteral = node.literal || '';
-
-                // use indented form if no info, and code doesn't
-                // begin or end with a blank line, and code isn't
-                // first thing in a list item
-                if (!info.length &&
-                    (codeLiteral.length > 2 && !Util.isSpace(codeLiteral[0])) &&
-                    !(Util.isSpace(codeLiteral[codeLiteral.length - 1]) && Util.isSpace(codeLiteral[codeLiteral.length - 2])) &&
-                    !(!node.prev && node.parent && node.parent.type == 'Item')) {
-                    this.literal("    ");
-                    this.prefix += "    ";
-                    this.out(codeLiteral, false, Escaping.LITERAL);
-                    this.truncatePrefix(4);
-                } else {
-                    let numticks = this.longestBacktickSequence(codeLiteral) + 1;
-                    if (numticks < 3) {
-                        numticks = 3;
-                    }
-                    for (let i = 0; i < numticks; i++) {
-                        this.literal("`");
-                    }
-                    this.literal(" ");
-                    this.out(info, false, Escaping.LITERAL);
-                    this.newLine();
-                    this.literal(codeLiteral);
-                    this.newLine();
-                    for (let i = 0; i < numticks; i++) {
-                        this.literal("`");
-                    }
-                }
-                this.blankline();
-                break;
-
-            case 'HtmlBlock':
-                this.blankline();
-                this.out(node.literal, false, Escaping.LITERAL);
-                this.blankline();
-                break;
-
-            case 'ThematicBreak':
-            case 'HorizontalRule':
-                this.blankline();
-                this.literal("-----");
-                this.blankline();
-                break;
-
-            case 'Paragraph':
-                if (!entering) {
-                    if (node.parent && node.parent.type === 'List' && node.parent.listTight) {
-                        this.newLine();
-                    } else {
-                        this.blankline();
-                    }
-                }
-                break;
-            case 'Text':
-                this.out(node.literal, false, Escaping.NORMAL);
-                break;
-
-            case 'Hardbreak':
-                if (this.options.preserveHardbreaks) {
-                    this.literal("\\");
-                }
-                this.newLine();
-                break;
-
-            case 'Softbreak':
-                if (this.options.preserveSoftbreaks) {
-                    this.newLine();
-                } else {
-                    this.out(" ", true, Escaping.LITERAL);
-                }
-                break;
-
-            case 'Code':
-                codeLiteral = node.literal;
-                let numticks = this.shorterstUnusedBacktickSequence(codeLiteral);
-                for (let i = 0; i < numticks; i++) {
-                    this.literal("`");
-                }
-                if (codeLiteral.length == 0 || codeLiteral[0] == '`') {
-                    this.literal(" ");
-                }
-                this.out(codeLiteral, true, Escaping.LITERAL);
-                if (codeLiteral.length == 0 || codeLiteral[codeLiteral.length - 1] == '`') {
-                    this.literal(" ");
-                }
-                for (let i = 0; i < numticks; i++) {
-                    this.literal("`");
-                }
-                break;
-
-            case 'Html':
-            case 'HtmlInline':
-                this.out(node.literal, false, Escaping.LITERAL);
-                break;
-
-            case 'Strong':
-                if (entering) {
-                    this.literal("**");
-                } else {
-                    this.literal("**");
-                }
-                break;
-
-            case 'Emph':
-                // If we have EMPH(EMPH(x)), we need to use *_x_*
-                // because **x** is STRONG(x):
-                let emphesisDelimiter;
-                if (node.parent && node.parent.type == 'Emph' &&
-                    !node.next && !node.prev) {
-                    emphesisDelimiter = "_";
-                } else {
-                    emphesisDelimiter = "*";
-                }
-                if (entering) {
-                    this.literal(emphesisDelimiter);
-                } else {
-                    this.literal(emphesisDelimiter);
-                }
-                break;
-
-            case 'Link':
-                if (this.isAutolink(node)) {
-                    if (entering) {
-                        this.literal("<");
-                        if (node.destination.substr(0, 7) === 'mailto:') {
-                            this.literal(node.destination.substr(7));
-                        } else {
-                            this.literal(node.destination);
-                        }
-                        this.literal(">");
-                        // return signal to skip contents of node...
-                        return false;
-                    }
-                } else {
-                    if (entering) {
-                        this.literal("[");
-                    } else {
-                        this.literal("](");
-                        this.out(node.destination, false, Escaping.URL);
-                        let title = node.title || '';
-                        if (title.length > 0) {
-                            this.literal(" \"");
-                            this.out(title, false, Escaping.TITLE);
-                            this.literal("\"");
-                        }
-                        this.literal(")");
-                    }
-                }
-                break;
-
-            case 'Image':
-                if (entering) {
-                    this.literal("![");
-                } else {
-                    this.literal("](");
-                    this.out(node.destination, false, Escaping.URL);
-                    let title = node.title || '';
-                    if (title.length > 0) {
-                        this.out(" \"", true, Escaping.LITERAL);
-                        this.out(title, false, Escaping.TITLE);
-                        this.literal("\"");
-                    }
-                    this.literal(")");
                 }
                 break;
         }
